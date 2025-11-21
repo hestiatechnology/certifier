@@ -20,17 +20,27 @@ export async function POST(req: NextRequest) {
     });
 
     const text = doc.getFullText();
-    // Regex to find %variable% patterns
-    // Matches %variable% or % variable %
-    const regex = /%\s*([\w\d_\-]+)\s*%/g;
-    const matches = new Set<string>();
+    
+    // Regex for standard placeholders %variable%
+    // Exclude patterns starting with # or / (which are loops)
+    const varRegex = /%(?![#/])\s*([\w\d_\-]+)\s*%/g;
+    const placeholders = new Set<string>();
     let match;
-
-    while ((match = regex.exec(text)) !== null) {
-      matches.add(match[1]);
+    while ((match = varRegex.exec(text)) !== null) {
+      placeholders.add(match[1]);
     }
 
-    return NextResponse.json({ placeholders: Array.from(matches) });
+    // Regex for loop tags: matches both {#loop} and %#loop%
+    const loopRegex = /(?:\{|%)\s*#\s*([\w\d_\-]+)\s*(?:\}|%)/g;
+    const loops = new Set<string>();
+    while ((match = loopRegex.exec(text)) !== null) {
+      loops.add(match[1]);
+    }
+
+    return NextResponse.json({ 
+      placeholders: Array.from(placeholders),
+      loops: Array.from(loops)
+    });
   } catch (error) {
     console.error("Error analyzing DOCX:", error);
     return NextResponse.json(

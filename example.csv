@@ -1,0 +1,5 @@
+name,identity_num,identity_valid_until,total_ects,course_name,approval_date,grade,grade_extense
+"Alice Wonderland",123456789,2028-12-31,30,"Introduction to AI",2023-01-15,A,"Excellent"
+"Alice Wonderland",123456789,2028-12-31,30,"Machine Learning Basics",2023-05-20,B+,"Very Good"
+"Bob The Builder",987654321,2027-11-01,15,"Advanced Robotics",2023-03-10,A,"Excellent"
+"Charlie Chaplin",112233445,2029-06-30,25,"History of Cinema",2023-07-01,A-,"Excellent"

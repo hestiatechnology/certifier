@@ -34,10 +34,15 @@ export async function POST(req: NextRequest) {
 
     // Helper to process a single item
     const processItem = async (row: any, index: number) => {
-      // 1. Prepare data based on mapping
-      const renderData: any = {};
-      for (const [placeholder, csvColumn] of Object.entries(mapping)) {
-        renderData[placeholder] = row[csvColumn as string] || "";
+      // 1. Prepare data
+      let renderData: any = row;
+      
+      // If mapping is provided, apply it to transform the row
+      if (mapping && Object.keys(mapping).length > 0) {
+        renderData = {};
+        for (const [placeholder, csvColumn] of Object.entries(mapping)) {
+          renderData[placeholder] = row[csvColumn as string] || "";
+        }
       }
 
       // 2. Render DOCX
