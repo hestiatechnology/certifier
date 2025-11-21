@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileUploader } from '@/components/FileUploader';
 import Papa from 'papaparse';
-import { ArrowRight, Download, Loader2, Layers, Info } from 'lucide-react';
+import { ArrowRight, Download, Loader2, Layers, Info, Mail } from 'lucide-react';
 import { clsx } from 'clsx';
 
 export default function Home() {
@@ -20,6 +20,11 @@ export default function Home() {
   // Grouping State
   const [enableGrouping, setEnableGrouping] = useState(false);
   const [groupByCol, setGroupByCol] = useState<string>('');
+
+  // Delivery State
+  const [deliveryMethod, setDeliveryMethod] = useState<'download' | 'email'>('download');
+  const [email, setEmail] = useState('');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [analyzing, setAnalyzing] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -109,6 +114,7 @@ export default function Home() {
 
     setGenerating(true);
     setError(null);
+    setSuccessMessage(null);
 
     try {
       // 1. Transform Data Locally
@@ -117,25 +123,13 @@ export default function Home() {
         for (const [ph, header] of Object.entries(mapping)) {
            newRow[ph] = row[header] || "";
         }
-        // Also keep original keys just in case, or for debugging? 
-        // No, let's keep it clean. Only mapped keys.
         return newRow;
       });
 
       let finalData = mappedData;
 
       if (enableGrouping && groupByCol && docxLoops.length > 0) {
-          // Grouping Logic
           const groups: Record<string, any[]> = {};
-          
-          // Find the mapping key that corresponds to the groupByCol (CSV Header)
-          // We need to group by the VALUE of the CSV column.
-          // mappedData keys are Placeholders. 
-          // We need to look up the value using the mapping.
-          
-          // Actually, it's safer to group using the raw CSV data first, then map?
-          // Or finding which placeholder maps to the groupByCol.
-          // Let's use the raw CSV row to find the group key, to avoid ambiguity.
           
           csvData.forEach((rawRow, index) => {
              const groupKey = rawRow[groupByCol];
@@ -144,8 +138,7 @@ export default function Home() {
           });
 
           finalData = Object.values(groups).map(groupItems => {
-             const rootItem = { ...groupItems[0] }; // Clone first item as root
-             // Assign the full list to every loop key found
+             const rootItem = { ...groupItems[0] };
              docxLoops.forEach(loopName => {
                  rootItem[loopName] = groupItems;
              });
@@ -155,29 +148,39 @@ export default function Home() {
 
       const formData = new FormData();
       formData.append('template', docxFile);
-      // Send the fully transformed data. No mapping needed on backend.
       formData.append('data', JSON.stringify(finalData));
       formData.append('mapping', JSON.stringify({})); 
+      formData.append('deliveryMethod', deliveryMethod);
+      formData.append('email', email);
 
       const res = await fetch('/api/generate', {
         method: 'POST',
         body: formData,
       });
 
-      if (!res.ok) throw new Error('Failed to generate certificates');
+      if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || 'Failed to generate certificates');
+      }
 
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'certificates.zip';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err) {
+      if (deliveryMethod === 'download') {
+          const blob = await res.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'certificates.zip';
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+      } else {
+          const data = await res.json();
+          setSuccessMessage(data.message || 'Email sent successfully!');
+      }
+
+    } catch (err: any) {
       console.error(err);
-      setError('Error generating certificates. Please try again.');
+      setError(err.message || 'Error generating certificates. Please try again.');
     } finally {
       setGenerating(false);
     }
@@ -185,6 +188,7 @@ export default function Home() {
 
   const isReady = docxFile && csvFile && docxPlaceholders.length > 0 && Object.keys(mapping).length > 0;
   const isGroupingValid = !enableGrouping || (enableGrouping && groupByCol !== '');
+  const isDeliveryValid = deliveryMethod === 'download' || (deliveryMethod === 'email' && email.includes('@'));
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 font-[family-name:var(--font-geist-sans)]">
@@ -310,6 +314,63 @@ export default function Home() {
                )}
            </div>
         )}
+        
+        {/* Delivery Method Section */}
+        {isReady && isGroupingValid && (
+           <div className="bg-white shadow-sm rounded-lg p-6 mb-8 border border-gray-200">
+             <h2 className="text-xl font-semibold mb-4 text-gray-800">5. Delivery Method</h2>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+               <label className={clsx("cursor-pointer border-2 rounded-lg p-4 flex items-center space-x-3 transition-colors", deliveryMethod === 'download' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-200')}>
+                 <input 
+                   type="radio" 
+                   name="delivery" 
+                   className="hidden" 
+                   checked={deliveryMethod === 'download'} 
+                   onChange={() => setDeliveryMethod('download')}
+                 />
+                 <div className={clsx("w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0", deliveryMethod === 'download' ? "border-blue-500" : "border-gray-300")}>
+                    {deliveryMethod === 'download' && <div className="w-3 h-3 rounded-full bg-blue-500"></div>}
+                 </div>
+                 <div>
+                   <span className="block font-medium text-gray-900 flex items-center"><Download className="w-4 h-4 mr-2"/> Download ZIP</span>
+                   <span className="block text-sm text-gray-500">Directly download the file to your device.</span>
+                 </div>
+               </label>
+
+               <label className={clsx("cursor-pointer border-2 rounded-lg p-4 flex items-center space-x-3 transition-colors", deliveryMethod === 'email' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-200')}>
+                 <input 
+                   type="radio" 
+                   name="delivery" 
+                   className="hidden" 
+                   checked={deliveryMethod === 'email'} 
+                   onChange={() => setDeliveryMethod('email')}
+                 />
+                 <div className={clsx("w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0", deliveryMethod === 'email' ? "border-indigo-500" : "border-gray-300")}>
+                    {deliveryMethod === 'email' && <div className="w-3 h-3 rounded-full bg-indigo-500"></div>}
+                 </div>
+                 <div>
+                   <span className="block font-medium text-gray-900 flex items-center"><Mail className="w-4 h-4 mr-2"/> Send via Email (R2 Link)</span>
+                   <span className="block text-sm text-gray-500">Upload to cloud and email the download link.</span>
+                 </div>
+               </label>
+             </div>
+             
+             {deliveryMethod === 'email' && (
+                 <div className="mt-4 animate-in fade-in slide-in-from-top-2">
+                     <label className="block text-sm font-medium text-gray-700 mb-1">Recipient Email Address</label>
+                     <input 
+                        type="email"
+                        required
+                        className="block w-full max-w-md rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border text-gray-900"
+                        placeholder="you@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                     />
+                     <p className="text-xs text-gray-500 mt-1">A secure 7-day download link will be sent here.</p>
+                 </div>
+             )}
+           </div>
+        )}
 
         {/* Action Section */}
         <div className="flex flex-col items-center justify-center space-y-4">
@@ -318,13 +379,18 @@ export default function Home() {
                {error}
              </div>
            )}
+           {successMessage && (
+             <div className="text-green-600 bg-green-50 px-4 py-2 rounded-md text-sm font-medium flex items-center">
+               <Mail className="w-4 h-4 mr-2"/> {successMessage}
+             </div>
+           )}
            
            <button
              onClick={handleGenerate}
-             disabled={!isReady || generating || !isGroupingValid}
+             disabled={!isReady || generating || !isGroupingValid || !isDeliveryValid}
              className={clsx(
                "flex items-center justify-center px-8 py-4 rounded-full text-lg font-bold text-white shadow-lg transition-all transform hover:scale-105",
-               (!isReady || generating || !isGroupingValid)
+               (!isReady || generating || !isGroupingValid || !isDeliveryValid)
                  ? 'bg-gray-400 cursor-not-allowed' 
                  : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/30'
              )}
@@ -332,12 +398,12 @@ export default function Home() {
              {generating ? (
                <>
                  <Loader2 className="animate-spin w-6 h-6 mr-2" />
-                 Generating...
+                 Processing...
                </>
              ) : (
                <>
-                 <Download className="w-6 h-6 mr-2" />
-                 Generate & Download ZIP
+                 {deliveryMethod === 'email' ? <Mail className="w-6 h-6 mr-2" /> : <Download className="w-6 h-6 mr-2" />}
+                 {deliveryMethod === 'email' ? 'Generate & Email Link' : 'Generate & Download ZIP'}
                </>
              )}
            </button>
